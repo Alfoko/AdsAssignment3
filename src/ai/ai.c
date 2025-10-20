@@ -192,6 +192,9 @@ void find_solution(gate_t* init_data) {
 	// Enqueue(n)
 	enqueue_state(n);
 	enqueued++;
+	
+	// Initialize radix tree for duplicate detection
+	struct radixTree *radixTree = getNewRadixTree(init_data->num_pieces, init_data->lines, init_data->num_chars_map / init_data->lines);
 
 	// while not Empty(Queue)
 	while (queue_head != NULL) {
@@ -222,6 +225,7 @@ void find_solution(gate_t* init_data) {
 				gate_t* newNode = duplicate_state(n);
 				*newNode = attempt_move(*newNode, pieceNames[piece], directions[dir]);
 				enqueued++;
+
 				// if !pieceMoved then
 				if (memcmp(newNode, n, sizeof(gate_t)) == 0) {
 					// Free(NewNode)
@@ -239,6 +243,19 @@ void find_solution(gate_t* init_data) {
 				newSoln[oldLen + 2] = '\0';
 				free(newNode->soln);
 				newNode->soln = newSoln;
+
+				// convert map into list of bit packed atoms
+				packMap(newNode, packedMap);
+
+				// check for duplicates in radix tree
+				if (checkPresent(radixTree, packedMap, newNode->num_pieces)) {
+					duplicatedNodes++;
+					// Free(NewNode)
+					free_state(newNode, init_data);
+					continue;
+				}
+
+				insertRadixTree(radixTree, packedMap, numPieces);
 
 				// Enqueue(NewNode)
 				enqueue_state(newNode);
