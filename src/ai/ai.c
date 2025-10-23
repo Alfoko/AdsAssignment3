@@ -184,84 +184,115 @@ void find_solution(gate_t* init_data) {
 	 * 	      Queue.Enqueue(NewNode)
 	 */
 	
-	// n <- createInitNode(init_data)
-	gate_t* n = duplicate_state(init_data);
-	gate_t* winning_state_ptr = NULL;
 	// numPieces <- getNumPieces(init_data)
 	int numPieces = init_data->num_pieces;
-	// Enqueue(n)
-	enqueue_state(n);
-	enqueued++;
-	
-	// Initialize radix tree for duplicate detection
-	struct radixTree *radixTree = getNewRadixTree(init_data->num_pieces, init_data->lines, init_data->num_chars_map / init_data->lines);
 
-	// while not Empty(Queue)
-	while (queue_head != NULL) {
-		// n <- Dequeue()
-		gate_t* n = queue_head->state;
-		struct qnode *old_head = queue_head;
-		queue_head = queue_head->next;
-		if (queue_head == NULL) {
-			queue_tail = NULL;
+	// Pointer to winning state for freeing later
+	gate_t* winning_state_ptr = NULL;
+
+	struct radixTree *radixTree[w];
+
+	for (int w = 1; w <= numPieces; w++) {
+		// Initialize w radix trees for novelty checking
+		for (int i = 0; i < w; i++) {
+			radixTree[i] = getNewRadixTree(numPieces, init_data->lines, init_data->num_chars_map / init_data->lines);
 		}
-		free(old_head);
-		dequeued++;
 
-		// if WinningCondition(n) then
-		if (winning_state(*n)) {
-			// solution <- SaveSolution(n)
-			soln = strdup(n->soln);
-			winning_state_ptr = n;
-			// solutionSize <- n.depth
-			has_won = true;
+		// n <- createInitNode(init_data)
+		gate_t* n = duplicate_state(init_data);
+		
+
+		// Enqueue(n)
+		enqueue_state(n);
+		enqueued++;
+		
+		
+		// while not Empty(Queue)
+		while (queue_head != NULL) {
+			// n <- Dequeue()
+			gate_t* n = queue_head->state;
+			struct qnode *old_head = queue_head;
+			queue_head = queue_head->next;
+			if (queue_head == NULL) {
+				queue_tail = NULL;
+			}
+			free(old_head);
+			dequeued++;
+
+			// if WinningCondition(n) then
+			if (winning_state(*n)) {
+				// solution <- SaveSolution(n)
+				soln = strdup(n->soln);
+				winning_state_ptr = n;
+				// solutionSize <- n.depth
+				has_won = true;
+				break;
+			}
+
+			// for each move action a (u, d, l, r) * numPieces do
+			for (int piece = 0; piece < numPieces; piece++) {
+				for (int dir = 0; dir < 4; dir++) {
+					// pieceMoved <- ApplyAction(n, NewNode, a)
+					gate_t* newNode = duplicate_state(n);
+					*newNode = attempt_move(*newNode, pieceNames[piece], directions[dir]);
+					enqueued++;
+
+					// if !pieceMoved then
+					if (memcmp(newNode, n, sizeof(gate_t)) == 0) {
+						// Free(NewNode)
+						free_state(newNode, init_data);
+						duplicatedNodes++;
+						continue;
+					}
+
+					// Format: piece name + direction (e.g., "0u", "1d", "2l", "3r")
+					int oldLen = strlen(newNode->soln);
+					char* newSoln = (char*)malloc(oldLen + 3); // +2 for piece+dir, +1 for null
+					strcpy(newSoln, newNode->soln);
+					newSoln[oldLen] = pieceNames[piece];
+					newSoln[oldLen + 1] = directions[dir];
+					newSoln[oldLen + 2] = '\0';
+					free(newNode->soln);
+					newNode->soln = newSoln;
+
+					// novel <- false
+					bool novel = false;
+
+					// convert map into list of bit packed atoms
+					packMap(newNode, packedMap);
+
+					// for each size s belonging to [1, w] do
+					for (int s = 1; s <= w; s++) {
+						// if packed map has a section of length s not present in radix tree s then
+						if (!checkPresentnCr(radixTree[s - 1], packedMap, numPieces)) {
+							// novel <- true
+							novel = true;
+						}
+						insertRadixTreenCr(radixTree[s - 1], packedMap, numPieces);
+					}
+
+					if (!novel) {
+						// Free(NewNode)
+						free_state(newNode, init_data);
+						duplicatedNodes++;
+						continue;
+					}
+						
+					// Enqueue(NewNode)
+					enqueue_state(newNode);
+				}
+			}
+			free_state(n, init_data);
+		}
+		// Free radix trees
+		for (int i = 0; i < w; i++) {
+			freeRadixTree(radixTree[i]);
+		}
+
+		// if solution found, break
+		if (has_won) {
 			break;
 		}
-
-		// for each move action a (u, d, l, r) * numPieces do
-		for (int piece = 0; piece < numPieces; piece++) {
-			for (int dir = 0; dir < 4; dir++) {
-				// pieceMoved <- ApplyAction(n, NewNode, a)
-				gate_t* newNode = duplicate_state(n);
-				*newNode = attempt_move(*newNode, pieceNames[piece], directions[dir]);
-				enqueued++;
-
-				// if !pieceMoved then
-				if (memcmp(newNode, n, sizeof(gate_t)) == 0) {
-					// Free(NewNode)
-					free_state(newNode, init_data);
-					duplicatedNodes++;
-					continue;
-				}
-
-				// Format: piece name + direction (e.g., "0u", "1d", "2l", "3r")
-				int oldLen = strlen(newNode->soln);
-				char* newSoln = (char*)malloc(oldLen + 3); // +2 for piece+dir, +1 for null
-				strcpy(newSoln, newNode->soln);
-				newSoln[oldLen] = pieceNames[piece];
-				newSoln[oldLen + 1] = directions[dir];
-				newSoln[oldLen + 2] = '\0';
-				free(newNode->soln);
-				newNode->soln = newSoln;
-
-				// convert map into list of bit packed atoms
-				packMap(newNode, packedMap);
-
-				// check for duplicates in radix tree
-				if (checkPresent(radixTree, packedMap, newNode->num_pieces)) {
-					duplicatedNodes++;
-					// Free(NewNode)
-					free_state(newNode, init_data);
-					continue;
-				}
-
-				insertRadixTree(radixTree, packedMap, numPieces);
-
-				// Enqueue(NewNode)
-				enqueue_state(newNode);
-			}
-		}
-		free_state(n, init_data);
 	}
 
 	/* Output statistics */
