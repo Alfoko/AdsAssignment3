@@ -162,40 +162,24 @@ void find_solution(gate_t* init_data) {
 
 	// Initialize solution string
 	init_data->soln = NULL;
-
-	/*
-	 * Algorithm 1:
-	 * n <- createInitNode(init_data)
-	 * numPieces <- getNumPieces(init_data)
-	 * Enqueue(n)
-	 * while not Empty(Queue)
-	 *     n <- Dequeue()
-	 *    exploredNodes <- exploredNodes + 1
-	 *     if WinningCondition(n) then
-	 *         solution <- SaveSolution(n)
-	 * 	       solutionSize <- n.depth
-	 *         break
-	 *    for each move action a (u, d, l, r) * numPieces do
-	 * 	      pieceMoved <- ApplyAction(n, NewNode, a)
-	 * 	      generatedNodes <- generatedNodes + 1
-	 *        if !pieceMoved then
-	 *            Free(NewNode)
-	 *            continue
-	 * 	      Queue.Enqueue(NewNode)
-	 */
 	
 	// numPieces <- getNumPieces(init_data)
 	int numPieces = init_data->num_pieces;
+	int maxWidth = numPieces + 1;
 
 	// Pointer to winning state for freeing later
 	gate_t* winning_state_ptr = NULL;
 
-	struct radixTree *radixTree[w];
+	// struct radixTree *radixTree[w];
 
-	for (int w = 1; w <= numPieces; w++) {
-		// Initialize w radix trees for novelty checking
-		for (int i = 0; i < w; i++) {
-			radixTree[i] = getNewRadixTree(numPieces, init_data->lines, init_data->num_chars_map / init_data->lines);
+	struct radixTree *rts[maxWidth + 1];
+
+	int memoryUsage = 0;
+
+	for (int w = 1; w <= maxWidth; w++) {
+		// Initialize maxWidth radix trees for novelty checking
+		for (int i = 1; i <= w; i++) {
+			rts[i] = getNewRadixTree(numPieces, init_data->lines, init_data->num_chars_map / init_data->lines);
 		}
 
 		// n <- createInitNode(init_data)
@@ -235,15 +219,25 @@ void find_solution(gate_t* init_data) {
 					// pieceMoved <- ApplyAction(n, NewNode, a)
 					gate_t* newNode = duplicate_state(n);
 					*newNode = attempt_move(*newNode, pieceNames[piece], directions[dir]);
+					
+					// generatedNodes <- generatedNodes + 1
 					enqueued++;
 
-					// if !pieceMoved then
-					if (memcmp(newNode, n, sizeof(gate_t)) == 0) {
-						// Free(NewNode)
+					// if pieceMoved then
+					bool moved = false;
+					for (int p = 0; p < numPieces; p++) {
+						if (newNode->piece_x[p] != n->piece_x[p] ||
+							newNode->piece_y[p] != n->piece_y[p]) {
+							moved = true;
+							break;
+						}
+					}
+
+					if (!moved) {
 						free_state(newNode, init_data);
-						duplicatedNodes++;
 						continue;
 					}
+
 
 					// Format: piece name + direction (e.g., "0u", "1d", "2l", "3r")
 					int oldLen = strlen(newNode->soln);
@@ -264,11 +258,11 @@ void find_solution(gate_t* init_data) {
 					// for each size s belonging to [1, w] do
 					for (int s = 1; s <= w; s++) {
 						// if packed map has a section of length s not present in radix tree s then
-						if (!checkPresentnCr(radixTree[s - 1], packedMap, numPieces)) {
+						if (checkPresentnCr(rts[s], packedMap, s) == NOTPRESENT) {
 							// novel <- true
 							novel = true;
 						}
-						insertRadixTreenCr(radixTree[s - 1], packedMap, numPieces);
+						insertRadixTreenCr(rts[s], packedMap, s);
 					}
 
 					if (!novel) {
@@ -284,14 +278,26 @@ void find_solution(gate_t* init_data) {
 			}
 			free_state(n, init_data);
 		}
-		// Free radix trees
-		for (int i = 0; i < w; i++) {
-			freeRadixTree(radixTree[i]);
-		}
-
+		
 		// if solution found, break
 		if (has_won) {
+			// Algorithm 2: Memory usage, uncomment to add.
+			//memoryUsage += queryRadixMemoryUsage(radixTree);
+			// Algorithm 3: Memory usage, uncomment to add.
+			for(int i = 1; i <= w; i++) {
+				memoryUsage += queryRadixMemoryUsage(rts[i]);
+			}
+			
+			// Free radix trees
+			for (int i = 1; i <= w; i++) {
+				freeRadixTree(rts[i]);
+			}
+
 			break;
+		}
+
+		for (int i = 1; i <= w; i++) {
+			freeRadixTree(rts[i]);
 		}
 	}
 
@@ -303,13 +309,7 @@ void find_solution(gate_t* init_data) {
 	printf("Expanded nodes: %d\n", dequeued);
 	printf("Generated nodes: %d\n", enqueued);
 	printf("Duplicated nodes: %d\n", duplicatedNodes);
-	int memoryUsage = 0;
-	// Algorithm 2: Memory usage, uncomment to add.
-	// memoryUsage += queryRadixMemoryUsage(radixTree);
-	// Algorithm 3: Memory usage, uncomment to add.
-	// for(int i = 0; i < w; i++) {
-	//	memoryUsage += queryRadixMemoryUsage(rts[i]);
-	// }
+	
 	printf("Auxiliary memory usage (bytes): %d\n", memoryUsage);
 	printf("Number of pieces in the puzzle: %d\n", init_data->num_pieces);
 	printf("Number of steps in solution: %ld\n", strlen(soln)/2);
@@ -322,7 +322,6 @@ void find_solution(gate_t* init_data) {
 	printf("Solved by IW(%d)\n", w);
 	printf("Number of nodes expanded per second: %lf\n", (dequeued + 1) / elapsed);
 
-	// Free remaining states in the queue
 	while (queue_head != NULL) {
 		gate_t* stateToFree = queue_head->state;
 		struct qnode *old_head = queue_head;
