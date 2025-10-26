@@ -63,16 +63,6 @@ gate_t* duplicate_state(gate_t* gate) {
  * Its use is up to your decision.
  */
 void free_state(gate_t* stateToFree, gate_t *init_data) {
-	//Fill in
-	/*
-	Hint:
-	Free all of:
-	dynamically allocated map strings
-	dynamically allocated map string pointers
-	solution string
-	state
-	*/
-
 	// free dynamically allocated map strings
 	for (int i = 0; i < stateToFree->lines; i++) {
 		free(stateToFree->map[i]);
@@ -86,14 +76,6 @@ void free_state(gate_t* stateToFree, gate_t *init_data) {
 }
 
 void free_initial_state(gate_t *init_data) {
-	/* Frees dynamic elements of initial state data - including 
-		unchanging state. */
-	/* 
-	Hint:
-	Unchanging state:
-	buffer
-	map_save
-	*/
 	// free buffer
 	free(init_data->buffer);
 	// free map_save strings
@@ -176,7 +158,7 @@ void find_solution(gate_t* init_data) {
 
 	int memoryUsage = 0;
 
-	for (int w = 1; w <= maxWidth; w++) {
+	for (int w = 1; w <= numPieces; w++) {
 		// Initialize maxWidth radix trees for novelty checking
 		for (int i = 1; i <= w; i++) {
 			rts[i] = getNewRadixTree(numPieces, init_data->lines, init_data->num_chars_map / init_data->lines);
@@ -184,29 +166,33 @@ void find_solution(gate_t* init_data) {
 
 		// n <- createInitNode(init_data)
 		gate_t* n = duplicate_state(init_data);
-		
 
 		// Enqueue(n)
 		enqueue_state(n);
 		enqueued++;
 		
 		
-		// while not Empty(Queue)
+		// while queue not empty do
 		while (queue_head != NULL) {
 			// n <- Dequeue()
 			gate_t* n = queue_head->state;
 			struct qnode *old_head = queue_head;
 			queue_head = queue_head->next;
+
+			// If queue is empty after dequeue, set tail to NULL
 			if (queue_head == NULL) {
 				queue_tail = NULL;
 			}
 			free(old_head);
+
+			// exploredNodes <- exploredNodes + 1
 			dequeued++;
 
-			// if WinningCondition(n) then
+			// if WinningCondition(n) then (found solution)
 			if (winning_state(*n)) {
 				// solution <- SaveSolution(n)
 				soln = strdup(n->soln);
+				// winning_state_ptr <- n
 				winning_state_ptr = n;
 				// solutionSize <- n.depth
 				has_won = true;
@@ -216,14 +202,15 @@ void find_solution(gate_t* init_data) {
 			// for each move action a (u, d, l, r) * numPieces do
 			for (int piece = 0; piece < numPieces; piece++) {
 				for (int dir = 0; dir < 4; dir++) {
-					// pieceMoved <- ApplyAction(n, NewNode, a)
+					// pieceMoved <- ApplyAction(n, NewNode, a) 
+					// create child newNode
 					gate_t* newNode = duplicate_state(n);
 					*newNode = attempt_move(*newNode, pieceNames[piece], directions[dir]);
 					
 					// generatedNodes <- generatedNodes + 1
 					enqueued++;
 
-					// if pieceMoved then
+					// if pieceMoved is false then
 					bool moved = false;
 					for (int p = 0; p < numPieces; p++) {
 						if (newNode->piece_x[p] != n->piece_x[p] ||
@@ -238,8 +225,7 @@ void find_solution(gate_t* init_data) {
 						continue;
 					}
 
-
-					// Format: piece name + direction (e.g., "0u", "1d", "2l", "3r")
+					// update solution string
 					int oldLen = strlen(newNode->soln);
 					char* newSoln = (char*)malloc(oldLen + 3); // +2 for piece+dir, +1 for null
 					strcpy(newSoln, newNode->soln);
@@ -262,12 +248,15 @@ void find_solution(gate_t* init_data) {
 							// novel <- true
 							novel = true;
 						}
+						// radixTree s <- InsertRadixTree s (packed map, radixTree s, s)
 						insertRadixTreenCr(rts[s], packedMap, s);
 					}
 
+					// if not novel then
 					if (!novel) {
 						// Free(NewNode)
 						free_state(newNode, init_data);
+						// duplicatedNodes <- duplicatedNodes + 1
 						duplicatedNodes++;
 						continue;
 					}
@@ -314,10 +303,16 @@ void find_solution(gate_t* init_data) {
 	printf("Number of pieces in the puzzle: %d\n", init_data->num_pieces);
 	printf("Number of steps in solution: %ld\n", strlen(soln)/2);
 	int emptySpaces = 0;
-	/*
-	 * FILL IN: Add empty space check for your solution.
-	 */
 	
+	// count the number of empty spaces in the map
+	for (int i = 0; i < init_data->lines; i++) {
+		for (int j = 0; init_data->map_save[i][j] != '\0'; j++) {
+			if (init_data->map_save[i][j] == ' ') {
+				emptySpaces++;
+			}
+		}
+	}
+
 	printf("Number of empty spaces: %d\n", emptySpaces);
 	printf("Solved by IW(%d)\n", w);
 	printf("Number of nodes expanded per second: %lf\n", (dequeued + 1) / elapsed);
