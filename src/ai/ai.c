@@ -283,9 +283,14 @@ void find_solution(gate_t* init_data) {
 	printf("Number of pieces in the puzzle: %d\n", init_data->num_pieces);
 	printf("Number of steps in solution: %ld\n", strlen(soln)/2);
 	int emptySpaces = 0;
-	/*
-	 * FILL IN: Add empty space check for your solution.
-	 */
+	// count the number of empty spaces in the map
+	for (int i = 0; i < init_data->lines; i++) {
+		for (int j = 0; init_data->map_save[i][j] != '\0'; j++) {
+			if (init_data->map_save[i][j] == ' ') {
+				emptySpaces++;
+			}
+		}
+	}
 	
 	printf("Number of empty spaces: %d\n", emptySpaces);
 	printf("Solved by IW(%d)\n", w);
